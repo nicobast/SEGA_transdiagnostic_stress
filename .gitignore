@@ -6,7 +6,7 @@
 .DS_Store
 desktop.ini
 
-outputs/
+output/
 manuscript/
 
 .PowerFolder/
