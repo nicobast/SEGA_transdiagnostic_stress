@@ -1,0 +1,351 @@
+---
+title: "auditory oddball baseline extraction"
+subtitle: "Minimal script to compute baseline_means"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    theme: cerulean
+    code_folding: hide
+---
+
+This script keeps only the code needed to compute the `baseline_means` data frame.
+
+# SETUP
+```{r setup, include = FALSE, warning = FALSE}
+library(rhdf5, warn.conflicts = FALSE)
+library(data.table, warn.conflicts = FALSE)
+library(zoo, warn.conflicts = FALSE)
+library(pbapply, warn.conflicts = FALSE)
+library(tidyverse, warn.conflicts = FALSE)
+```
+
+```{r, include = FALSE, warning = FALSE}
+
+if (Sys.info()["sysname"] == "Windows") {
+  home_path <- "C:/Users/nico"
+  project_path <- "/Nextcloud/project_sega"
+  
+  #datapath <- "//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/ET-Daten/Auditory Oddball"
+  #datapath_task <-"//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/Task Auditory Oddball"
+  datapath <- "Z:/nico/backup_data/data_SEGA/project_sega/data/et auditory oddball"
+  datapath_task <- "Z:/nico/backup_data/data_SEGA/project_sega/data/task auditory oddball"
+
+  data_files <- c(
+    list.files(path = datapath, full.names = TRUE),
+    list.files(path = datapath_task, full.names = TRUE)
+  )
+}
+```
+
+# IMPORT EYE-TRACKING + TRIAL DATA
+```{r, include = FALSE, warning = FALSE}
+data_files_et <- data_files[grepl(".hdf5", data_files)]
+exclude_unreadable <- c(
+  # "//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/ET-Daten/Auditory Oddball/auditory_103_2024-04-28-1236.hdf5",
+  # "//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/ET-Daten/Auditory Oddball/auditory_2022-10-04-0911.hdf5",
+  # "//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/ET-Daten/Auditory Oddball/auditory_2022-10-05-1440.hdf5",
+  # "//192.168.88.212/daten/KJP_Studien/Studie_SEGA/5_Versuchsdaten/ET-Daten/Auditory Oddball/auditory_2022-10-19-1220.hdf5"
+  "Z:/nico/backup_data/data_SEGA/project_sega/data/et auditory oddball/auditory_103_2024-04-28-1236.hdf5",
+  "Z:/nico/backup_data/data_SEGA/project_sega/data/et auditory oddball/auditory_2022-10-04-0911.hdf5",
+  "Z:/nico/backup_data/data_SEGA/project_sega/data/et auditory oddball/auditory_2022-10-05-1440.hdf5",
+  "Z:/nico/backup_data/data_SEGA/project_sega/data/et auditory oddball/auditory_2022-10-19-1220.hdf5"
+)
+data_files_et <- data_files_et[!data_files_et %in% exclude_unreadable]
+
+list_et_data <- vector("list", length(data_files_et))
+for (i in seq_along(data_files_et)) {
+  print(paste0("now reading: ", data_files_et[i]))
+  list_et_data[[i]] <- h5read(
+    file = data_files_et[i],
+    name = "data_collection/events/eyetracker/BinocularEyeSampleEvent"
+  )
+}
+
+h5closeAll()
+
+id_names <- tools::file_path_sans_ext(basename(data_files_et))
+names(list_et_data) <- id_names
+
+constant_variables <- c(
+  "experiment_id", "status", "session_id", "device_id", "type", "device_time",
+  "time", "delay", "confidence_interval", "filter_id",
+  "left_gaze_z", "right_gaze_z", "left_angle_x", "right_angle_x",
+  "left_angle_y", "right_angle_y", "left_raw_x", "right_raw_x",
+  "left_raw_y", "right_raw_y", "left_pupil_measure1_type", "right_pupil_measure1_type",
+  "left_pupil_measure2_type", "right_pupil_measure2_type", "left_ppd_x", "right_ppd_x",
+  "left_ppd_y", "right_ppd_y", "left_velocity_x", "right_velocity_x",
+  "left_velocity_y", "right_velocity_y", "left_velocity_xy", "right_velocity_xy",
+  "left_pupil_measure2", "right_pupil_measure2",
+  "left_eye_cam_x", "right_eye_cam_x", "left_eye_cam_y", "right_eye_cam_y",
+  "left_eye_cam_z", "right_eye_cam_z"
+)
+
+list_et_data <- lapply(list_et_data, function(x) x[!(names(x) %in% constant_variables)])
+
+# Task files
+data_files_trial <- data_files[grepl(".csv", data_files)]
+trial_variables <- c(
+  ".thisRepN", ".thisTrialN", "phase", "block_counter",
+  "stimulus_duration", "baseline_trial_counter", "grip_strength",
+  "trial", "timestamp_exp", "oddball_trial_counter", "ISI_duration",
+  "manipulation_trial_counter", "id", "group", "oddball_frequency",
+  "standard_frequency"
+)
+
+list_trial_data <- pblapply(data_files_trial, fread, select = trial_variables)
+list_trial_data <- pblapply(list_trial_data, data.frame)
+
+id_names <- tools::file_path_sans_ext(basename(data_files_trial))
+names(list_trial_data) <- id_names
+
+#recover file names
+data_files_trial[155]<-"Z:/nico/backup_data/data_SEGA/project_sega/data/task auditory oddball/auditory_145_2024-04-10-1304.csv"
+data_files_trial[49]<-"Z:/nico/backup_data/data_SEGA/project_sega/data/task auditory oddball/auditory_153_2025-04-22-1514.csv"
+
+# Drop unmatched files
+unmatched_et <- tools::file_path_sans_ext(basename(data_files_et))[!(tools::file_path_sans_ext(basename(data_files_et)) %in% tools::file_path_sans_ext(basename(data_files_trial)))]
+unmatched_task <- tools::file_path_sans_ext(basename(data_files_trial))[!(tools::file_path_sans_ext(basename(data_files_trial)) %in% tools::file_path_sans_ext(basename(data_files_et)))]
+cat(unmatched_task, "do not have a matching et file", sep = "\n")
+cat(unmatched_et, "do not have a matching trial file", sep = "\n")
+
+list_et_data <- list_et_data[!(names(list_et_data) %in% paste0(unmatched_et, ".hdf5"))]
+list_trial_data <- list_trial_data[!(names(list_trial_data) %in% paste0(unmatched_task, ".csv"))]
+list_et_data <- list_et_data[names(list_et_data) != "auditory_77_2023-04-17-1831.hdf5"]
+list_trial_data <- list_trial_data[names(list_trial_data) != "auditory_77_2023-04-17-1831.csv"]
+
+
+#quick fix
+list_et_data<-list_et_data[-151]
+cbind(names(list_et_data),names(list_trial_data))
+
+# Add mean grip strength to each trial row
+list_trial_data <- pblapply(list_trial_data, function(x) {
+  x$mean_grip_strength <- mean(x$grip_strength, na.rm = TRUE)
+  x
+})
+
+df_trial <- plyr::rbind.fill(list_trial_data)
+```
+
+# MERGE ET DATA TO TASK TRIALS
+```{r, include = FALSE, warning = FALSE}
+fun_merge_all_ids <- function(et_data, trial_data) {
+  start_ts <- trial_data$timestamp_exp
+  end_ts <- c(trial_data$timestamp_exp[-1], NA)
+  et_ts <- et_data$logged_time
+  split_trial_data <- split(trial_data, seq(nrow(trial_data)))
+
+  fun_merge_data <- function(ts_1, ts_2, trial_data_splitted) {
+    matched_time <- which(et_ts >= ts_1 & et_ts < ts_2)
+    if (trial_data_splitted$baseline_trial_counter == "6" & !is.na(trial_data_splitted$baseline_trial_counter)) {
+      matched_time <- which(et_ts >= ts_1)
+    }
+    selected_et_data <- et_data[matched_time, ]
+    repeated_trial_data <- data.frame(sapply(
+      trial_data_splitted,
+      function(x) rep(x, length(matched_time)),
+      simplify = FALSE
+    ))
+    data.frame(repeated_trial_data, selected_et_data)
+  }
+
+  mapply(
+    fun_merge_data,
+    ts_1 = start_ts,
+    ts_2 = end_ts,
+    trial_data_splitted = split_trial_data,
+    SIMPLIFY = FALSE
+  ) |>
+    dplyr::bind_rows()
+}
+
+df_list <- pbmapply(
+  fun_merge_all_ids,
+  et_data = list_et_data,
+  trial_data = list_trial_data,
+  SIMPLIFY = FALSE
+)
+
+df_list <- df_list[sapply(df_list, function(x) length(x) != 0)]
+rm(list_et_data)
+```
+
+# PREPARE TRIAL DATA AND PREPROCESS PUPIL SIGNALS
+```{r, include = FALSE, warning = FALSE}
+df_list <- pblapply(df_list, function(x) {
+  x$trial_index <- with(x, droplevels(interaction(.thisTrialN, .thisRepN, block_counter)))
+  x$trial_number <- with(x, rep(seq_along(table(trial_index)), times = table(trial_index)))
+  x
+})
+
+#remove first 4 standards
+standards_index <- c("-1.0.3", "-1.0.5", "-1.0.10", "-1.0.12")
+df_list <- pblapply(df_list, function(x) subset(x, !trial_index %in% standards_index))
+
+list_split_trial <- pblapply(df_list, function(x) split(x, x$trial_number))
+list_split_trial <- unlist(list_split_trial, recursive = FALSE)
+list_split_trial <- pblapply(list_split_trial, function(x) {
+  x$ts_trial <- x$logged_time - x$timestamp_exp
+  x
+})
+
+fun_blink_cor <- function(signal, lower_threshold = 23, upper_threshold = 75,
+                         samples_before = 8, samples_after = 8) {
+  findna <- ifelse(is.na(signal), 999, signal)
+  repets <- rle(findna)
+  repets <- rep(repets[["lengths"]], times = repets[["lengths"]])
+  repets <- ifelse(repets >= lower_threshold & repets <= upper_threshold, 1, 0)
+  repets[findna != 999 & repets == 1] <- 0
+  changes <- c(diff(repets), 0)
+  change_start <- which(changes == 1)
+  start_seq <- unlist(lapply(change_start, function(x) seq(max(x - (samples_before - 1), 1), x)))
+  repets[start_seq] <- 1
+  changes_end <- which(changes == -1) + 1
+  end_seq <- unlist(lapply(changes_end, function(x) seq(x, min(x + (samples_before - 1), length(repets)))))
+  repets[end_seq] <- 1
+  signal[repets == 1] <- NA
+  signal
+}
+
+func_pd_preprocess <- function(x) {
+  left_diameter <- x$left_pupil_measure1
+  right_diameter <- x$right_pupil_measure1
+  remote_time <- x$ts_trial * 1000
+
+  pl <- ifelse((left_diameter < 2 | left_diameter > 8), NA, left_diameter)
+  pr <- ifelse((right_diameter < 2 | right_diameter > 8), NA, right_diameter)
+
+  constant <- 3
+  pl_speed1 <- diff(pl) / diff(remote_time)
+  pl_speed2 <- diff(rev(pl)) / diff(rev(remote_time))
+  pl_speed1 <- c(NA, pl_speed1)
+  pl_speed2 <- c(rev(pl_speed2), NA)
+  pl_speed <- pmax(pl_speed1, pl_speed2, na.rm = TRUE)
+
+  pr_speed1 <- diff(pr) / diff(remote_time)
+  pr_speed2 <- diff(rev(pr)) / diff(rev(remote_time))
+  pr_speed1 <- c(NA, pr_speed1)
+  pr_speed2 <- c(rev(pr_speed2), NA)
+  pr_speed <- pmax(pr_speed1, pr_speed2, na.rm = TRUE)
+
+  pl_speed_med <- median(pl_speed, na.rm = TRUE)
+  pl_mad <- median(abs(pl_speed - pl_speed_med), na.rm = TRUE)
+  pl_threshold_speed <- pl_speed_med + constant * pl_mad
+  pr_speed_med <- median(pr_speed, na.rm = TRUE)
+  pr_mad <- median(abs(pr_speed - pr_speed_med), na.rm = TRUE)
+  pr_threshold_speed <- pr_speed_med + constant * pr_mad
+
+  pl <- ifelse(abs(pl_speed) > pl_threshold_speed, NA, pl)
+  pr <- ifelse(abs(pr_speed) > pr_threshold_speed, NA, pr)
+  pl <- fun_blink_cor(pl)
+  pr <- fun_blink_cor(pr)
+
+  smooth_length <- 150
+  smooth_size <- round(smooth_length / median(diff(remote_time), na.rm = TRUE))
+  smooth_size <- ifelse(smooth_size %% 2 == 0, smooth_size + 1, smooth_size)
+
+  pl_smooth <- na.approx(pl, na.rm = FALSE, rule = 2)
+  if (sum(!is.na(pl_smooth)) != 0) pl_smooth <- runmed(pl_smooth, k = smooth_size)
+  pl_mad <- median(abs(pl - pl_smooth), na.rm = TRUE)
+
+  pr_smooth <- na.approx(pr, na.rm = FALSE, rule = 2)
+  if (sum(!is.na(pr_smooth)) != 0) pr_smooth <- runmed(pr_smooth, k = smooth_size)
+  pr_mad <- median(abs(pr - pr_smooth), na.rm = TRUE)
+
+  pl_pass1 <- ifelse((pl > pl_smooth + constant * pl_mad) | (pl < pl_smooth - constant * pl_mad), NA, pl)
+  pr_pass1 <- ifelse((pr > pr_smooth + constant * pr_mad) | (pr < pr_smooth - constant * pr_mad), NA, pr)
+
+  pl_smooth <- na.approx(pl_pass1, na.rm = FALSE, rule = 2)
+  if (sum(!is.na(pl_smooth)) != 0) pl_smooth <- runmed(pl_smooth, k = smooth_size)
+  pl_mad <- median(abs(pl - pl_smooth), na.rm = TRUE)
+
+  pr_smooth <- na.approx(pr_pass1, na.rm = FALSE, rule = 2)
+  if (sum(!is.na(pr_smooth)) != 0) pr_smooth <- runmed(pr_smooth, k = smooth_size)
+  pr_mad <- median(abs(pr - pr_smooth), na.rm = TRUE)
+
+  pl_pass2 <- ifelse((pl > pl_smooth + constant * pl_mad) | (pl < pl_smooth - constant * pl_mad), NA, pl)
+  pr_pass2 <- ifelse((pr > pr_smooth + constant * pr_mad) | (pr < pr_smooth - constant * pr_mad), NA, pr)
+
+  pl <- pl_pass2
+  pr <- pr_pass2
+
+  pd_offset <- pl - pr
+  pd_offset <- na.approx(pd_offset, rule = 2)
+  pl <- ifelse(!is.na(pl), pl, pr + pd_offset)
+  pr <- ifelse(!is.na(pr), pr, pl - pd_offset)
+
+  pl <- na.approx(pl, na.rm = FALSE, maxgap = 90, rule = 2)
+  pr <- na.approx(pr, na.rm = FALSE, maxgap = 90, rule = 2)
+
+  x$pd <- (pl + pr) / 2
+  x
+}
+
+list_split_trial <- pblapply(list_split_trial, func_pd_preprocess)
+```
+
+# COMPUTE BASELINE_MEANS
+```{r, include = FALSE, warning = FALSE}
+list_split_trial <- pblapply(list_split_trial, function(x) {
+  x$rpd_low <- mean(x$pd[x$ts_trial <= 0.250], na.rm = TRUE)
+  x
+})
+
+df <- dplyr::bind_rows(list_split_trial)
+
+baseline_means <- data.frame()
+subjects <- unique(df$id)
+
+for (subject in subjects) {
+  print(paste0("now processing: ", subject))
+  subject_df <- df[df$id == subject, ]
+  baseline_trial_counter <- c(1, 2, 3, 4, 5, 6)
+
+  for (i in baseline_trial_counter) {
+    baseline_df <- subject_df[subject_df$trial == "baseline" & subject_df$baseline_trial_counter == i, ]
+    block_baseline_mean <- mean(baseline_df$pd, na.rm = TRUE)
+    id <- subject
+    baseline_trial_counter_i <- i
+
+    if (i == 1) block_counter <- 3
+    if (i == 2) block_counter <- 5
+    if (i == 3) block_counter <- NA
+    if (i == 4) block_counter <- 10
+    if (i == 5) block_counter <- 12
+    if (i == 6) block_counter <- NA
+
+    baseline_means <- rbind(
+      baseline_means,
+      cbind(id, block_counter, block_baseline_mean, baseline_trial_counter_i)
+    )
+  }
+}
+
+colnames(baseline_means) <- c("id", "block_counter", "block_baseline_mean", "baseline_trial_counter")
+baseline_means$baseline_trial_counter <- as.factor(baseline_means$baseline_trial_counter)
+```
+
+# SAVE & RESULT
+```{r}
+head(baseline_means)
+
+# Save baseline_means as RDS file
+saveRDS(baseline_means, file = paste0(home_path,project_path,"/data/baseline_means.rds"))
+
+# Visualize baseline means by trial counter
+ggplot(baseline_means, aes(x = baseline_trial_counter, y = block_baseline_mean, group = id)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Baseline Means by Trial Counter",
+    x = "Baseline Trial Counter",
+    y = "Block Baseline Mean"
+  ) +
+  theme_minimal()
+
+with(baseline_means, tapply(block_baseline_mean, baseline_trial_counter, mean, na.rm = TRUE))
+
+```
