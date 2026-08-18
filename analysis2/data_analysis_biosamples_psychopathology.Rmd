@@ -20,17 +20,20 @@ knitr::opts_chunk$set(echo = TRUE)
 
 #required packages
 require(openxlsx) #read xls
-require(ggplot2)
+require(ggplot2) #visuals
 require(gridExtra)
 require(effectsize) #standardized coefficients of LM
-require(kableExtra)
-require(corrplot)
+require(kableExtra) #APA tables
+require(corrplot) #correlation plot
 require(car) # ANOVA type=3
 require(emmeans) # post hoc
 require(caret) #classification
 require(pROC) #classification
 require(boot) #classification
 require(tidyr) #data manipulation
+library(dplyr) #data manipulation
+library(psych) #model diagnostics
+library(GPArotation) #exploratory factor analysis
 
 
 #set ggplot theme
@@ -516,6 +519,36 @@ df$BPS_change<-df$BPS_Standard_after_forward-df$BPS_Standard_before_forward
 
 ```
 
+### pupil variation
+
+```{r pupil_changes}
+
+df$SEPR_variation<- apply(df[, c(
+  "SEPR_Oddball_after_forward",
+  "SEPR_Oddball_after_reverse",
+  "SEPR_Oddball_before_forward",
+  "SEPR_Oddball_before_reverse",
+  "rpd_oddball_saliencehigh_utilityhigh",
+  "rpd_oddball_saliencehigh_utilitylow",
+  "rpd_oddball_saliencelow_utilityhigh",
+  "rpd_oddball_saliencelow_utilitylow"
+)], 1, sd, na.rm = TRUE)
+
+df$BPS_variation <- apply(df[, c(
+  "BPS_block_1",
+  "BPS_block_2",
+  "BPS_block_3",
+  "BPS_block_4",
+  "BPS_block_5",
+  "BPS_block_6",
+  "pd_low_oddball_saliencehigh_utilityhigh",
+  "pd_low_oddball_saliencehigh_utilitylow",
+  "pd_low_oddball_saliencelow_utilityhigh",
+  "pd_low_oddball_saliencelow_utilitylow"
+)], 1, sd, na.rm = TRUE)
+
+```
+
 ### SDQ externalizing internalizing - self report
 
 - use Germans norms
@@ -920,36 +953,6 @@ save_kable(table_sample, file=paste0(project_path,'/output/tables/table1_sampled
 
 ```
 
-### figure pupil measure and bio samples
-
-```{r figure BPS SEPR}
-
-tiff(file=paste0(project_path,"/output/figures/figure_pupillometry_biosamples.tiff"), 
-     width=8, height=5.5, units="in", res=600, compression='lzw') 
-
-composite_bins<-12
-
-grid.arrange(
-
-ggplot(df_sample,aes(x=BPS_average))+
-  geom_histogram(bins=composite_bins)+xlab('BPS: baseline pupil size [mm]')+ylim(0,20),
-ggplot(df_sample,aes(x=SEPR_average))+
-  geom_histogram(bins=composite_bins)+xlab('SEPR: stimulus-evoked pupillary response [mm]')+ylim(0,20),
-ggplot(df_sample,aes(x=hair_cortisol_pg_mg_log))+
-  geom_histogram(bins=composite_bins)+xlab('Hair cortisol concentration [log10(pg/mg)]'),
-ggplot(df_sample,aes(x=saliva_change_log))+
-  geom_histogram(bins=composite_bins)+xlab('Saliva cortisol concentration change [log10(nmol/l)]'),
-ncol=2
-)
-
-dev.off()
-
-#print to markdown
-knitr::include_graphics(paste0(project_path,"/output/figures/figure_pupillometry_biosamples.tiff"))
-
-```
-
-
 ### figure questionnaire data
 
 ```{r data inspection questionnaires}
@@ -1036,6 +1039,92 @@ cor.test(df_sample$SDQ_parent_ext,df_sample$SDQ_self_ext)
 
 ```
 
+### table pupil measures descriptives
+
+```{r table pupil descriptives}
+
+table_data<-rbind(psych::describe(df_sample$BPS_average),
+                  psych::describe(df_sample$BPS_block_1),
+                  psych::describe(df_sample$BPS_block_3),
+                  psych::describe(df_sample$BPS_block_4),
+                  psych::describe(df_sample$BPS_block_6),
+                  psych::describe(df_sample$pd_low_standard_saliencehigh_utilityhigh),
+                  psych::describe(df_sample$pd_low_standard_saliencehigh_utilitylow),
+                  psych::describe(df_sample$pd_low_standard_saliencelow_utilityhigh),
+                  psych::describe(df_sample$pd_low_standard_saliencelow_utilitylow),
+                  psych::describe(df_sample$SEPR_average),
+                  psych::describe(df_sample$SEPR_Oddball_before_forward),
+                  psych::describe(df_sample$SEPR_Oddball_after_forward),
+                  psych::describe(df_sample$rpd_oddball_saliencehigh_utilityhigh),
+                  psych::describe(df_sample$rpd_oddball_saliencehigh_utilitylow),
+                  psych::describe(df_sample$rpd_oddball_saliencelow_utilityhigh),
+                  psych::describe(df_sample$rpd_oddball_saliencelow_utilitylow)
+                  )
+
+
+table_data<-table_data[,c('n','mean','sd','min','max')]
+table_data<-round(table_data,2)
+
+row.names(table_data)<-c('BPS average','BPS auditory oddball before task','BPS auditory oddball before manipulaiton','BPS auditory oddball after manipulation','BPS auditory oddball after task',
+                         'BPS visual oddball ++','BPS visual oddball +-','BPS visual oddball -+','BPS visual oddball --',
+                         'SEPR average','SEPR auditory oddball before manipulation','SEPR auditory oddball after manipulation',
+                         'SEPR viusal oddball ++','SEPR viusal oddball +-','SEPR viusal oddball -+','SEPR viusal oddball --')
+
+
+measure<-c('BPS (in mm)','','','','','','','','',
+           'SEPR (in mm)','','','','','','')
+
+
+task<-c('','auditory','auditory','auditory','auditory','visual','visual','visual','visual',
+        '','auditory','auditory','visual','visual','visual','visual')
+
+condition<-c('','before task','before manipulation','after manipulation','after task','salience high + utility high','salience high + utility low','salience low + utility high','salience low + utility low',
+            '','before manipulation','after manipulation','salience high + utility high','salience high + utility low','salience low + utility high','salience low + utility low')
+
+
+table_data<-cbind(measure,task,condition,table_data)
+
+table_sample<-table_data %>%
+  kbl(caption = "Table 1. Description of pupillary measures", row.names = F) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  footnote(general = "++ = salience high, utility high, +- = salience high, utility low, -+ = salience low, utility high, -- = salience low, utility low")
+
+table_sample
+
+save_kable(table_sample, file=paste0(project_path,'/output/tables/tablex_pupildescription.html'))
+
+```
+
+### figure pupil measure and bio samples
+
+```{r figure BPS SEPR}
+
+tiff(file=paste0(project_path,"/output/figures/figure_pupillometry_biosamples.tiff"), 
+     width=8, height=5.5, units="in", res=600, compression='lzw') 
+
+composite_bins<-12
+
+grid.arrange(
+
+ggplot(df_sample,aes(x=BPS_average))+
+  geom_histogram(bins=composite_bins)+xlab('BPS: baseline pupil size [mm]')+ylim(0,20),
+ggplot(df_sample,aes(x=SEPR_average))+
+  geom_histogram(bins=composite_bins)+xlab('SEPR: stimulus-evoked pupillary response [mm]')+ylim(0,20),
+ggplot(df_sample,aes(x=hair_cortisol_pg_mg_log))+
+  geom_histogram(bins=composite_bins)+xlab('Hair cortisol concentration [log10(pg/mg)]'),
+ggplot(df_sample,aes(x=saliva_change_log))+
+  geom_histogram(bins=composite_bins)+xlab('Saliva cortisol concentration change [log10(nmol/l)]'),
+ncol=2
+)
+
+dev.off()
+
+#print to markdown
+knitr::include_graphics(paste0(project_path,"/output/figures/figure_pupillometry_biosamples.tiff"))
+
+```
+
+
 ### correlation table core variables
 
 - hair cortisol is negatively assoicated with self- and parent-reported internalizing 
@@ -1049,25 +1138,31 @@ interested_variables<-c(
   "saliva_Average.2",
   'saliva_change',
   "hair_cortisol_pg_mg", 
-  "BPS_change",
   'BPS_average',
-  "SEPR_average",
-  "SEPR_Oddball_change",
-  "INT_parent",
-  "EXT_parent",
+  "SEPR_Oddball_before_forward",
+  "SEPR_Oddball_after_forward",
+  "rpd_oddball_saliencehigh_utilityhigh",
+  "rpd_oddball_saliencelow_utilitylow",
+  "YSR_T_GES",
+  "YSR_INT",
+  "YSR_EXT",
   "CBCL_T_GES",
-  "INT_self",
-  "EXT_self",
-  "YSR_T_GES"
+  "CBCL_T_INT",
+  "CBCL_T_EXT",
+  "SDQ_total_self",
+  "SDQ_self_int",
+  "SDQ_self_ext",
+  "SDQ_total_parent",
+  "SDQ_parent_int",
+  "SDQ_parent_ext"
 )
 
 cor_matrix<-round(cor(df[,interested_variables],use = 'pairwise.complete.obs'),2)
-corrplot(cor_matrix,type='upper',method='number',tl.cex=0.8)
-
+corrplot(cor_matrix,type='upper',method='circle',tl.cex=0.8)
 
 ```
 
-### correlation table cortisol and pupil measures
+### new: correlation table cortisol and pupil measures
 
 - saliva cortisol is negatively associated with baseline pupil sizes
 - higher saliva cortisol before experiment is associated with smaller response to manipulation
@@ -1078,33 +1173,74 @@ interested_variables<-c(
   "saliva_Average.1",
   "saliva_Average.2",
   "saliva_change",
-  "hair_cortisol_pg_mg", 
-  "rpd_oddball_saliencehigh_utilityhigh",
-  "rpd_oddball_saliencehigh_utilitylow",
-  "rpd_oddball_saliencelow_utilityhigh",
-  "rpd_oddball_saliencelow_utilitylow",
-  "SEPR_Oddball_before_forward",
-  "SEPR_Oddball_after_forward",
-  "SEPR_Oddball_before_reverse",
-  "SEPR_Oddball_after_reverse",
-  "BPS_Standard_before_forward",
-  "BPS_Standard_before_reverse",
-  "BPS_Standard_after_forward",
-  "BPS_Standard_after_reverse",
+  "hair_cortisol_pg_mg",
+  "BPS_average", 
+  #"BPS_block_1",
+  #"BPS_block_2",
+  "BPS_block_3",
+  "BPS_block_4",
+  #"BPS_block_5",
+  #"BPS_block_6",
+  #"BPS_Standard_before_forward",
+  #"BPS_Standard_before_reverse",
+  #"BPS_Standard_after_forward",
+  #"BPS_Standard_after_reverse",
   "pd_low_oddball_saliencehigh_utilityhigh",
   "pd_low_oddball_saliencehigh_utilitylow",
   "pd_low_oddball_saliencelow_utilityhigh",
   "pd_low_oddball_saliencelow_utilitylow",
-  "BPS_block_1",
-  "BPS_block_2",
-  "BPS_block_3",
-  "BPS_block_4",
-  "BPS_block_5",
-  "BPS_block_6"
+  "SEPR_average",
+  "SEPR_Oddball_before_forward",
+  #"SEPR_Oddball_before_reverse",
+  "SEPR_Oddball_after_forward",
+  #"SEPR_Oddball_after_reverse",
+  "rpd_oddball_saliencehigh_utilityhigh",
+  "rpd_oddball_saliencehigh_utilitylow",
+  "rpd_oddball_saliencelow_utilityhigh",
+  "rpd_oddball_saliencelow_utilitylow",
+  "YSR_T_GES",
+  "YSR_T_INT",
+  "YSR_T_EXT",
+  "SDQ_total_self",
+  "SDQ_self_int",
+  "SDQ_self_ext"
 )
 
-cor_matrix<-round(cor(df[,interested_variables],use = 'pairwise.complete.obs'),2)
-corrplot(cor_matrix,type='upper',method='circle',tl.cex=0.8)
+cor_matrix<-df[,interested_variables]
+
+# names(cor_matrix)<-c(
+#   "saliva cortisol before experiment",
+#   "saliva cortisol after experiment",
+#   "saliva cortisol change",
+#   "hair cortisol",
+#   "SEPR average",
+#   "SEPR auditory oddball, before manipulation",
+#   #"SEPR before manipulation reverse (mm)",
+#   "SEPR auditory oddball, after manipulation",
+#   #"SEPR after manipulation reverse (mm)",
+#   "SEPR visual oddball, salience high + utility high",
+#   "SEPR visual oddball, salience high + utility low",
+#   "SEPR visual oddball, salience low + utility high",
+#   "SEPR visual oddball, salience low + utility low",
+#   "BPS average", 
+#   "BPS auditory oddball, before manipulation",
+#   #"BPS before manipulation reverse (mm)",
+#   "BPS auditory oddball, after manipulation",
+#   #"BPS after manipulation reverse (mm)",
+#   "BPS visual oddball, salience high + utility high",
+#   "BPS visual oddball, salience high + utility low",
+#   "BPS visual oddball, salience low + utility high",
+#   "BPS visual oddball, salience low + utility low",
+#   #"BPS block1",
+#   #"BPS block2",
+#   "BPS block3",
+#   "BPS block4",
+#   #"BPS block5",
+#   #"BPS block6"
+# )
+
+cor_matrix<-round(cor(cor_matrix,use = 'pairwise.complete.obs'),2)
+corrplot(cor_matrix,type='upper',method='color',tl.cex=0.8, tl.col='black')
 
 #negative association of saliva cortisol before experiment and BPS average
 cor.test(df$saliva_Average.1,df$BPS_average)
@@ -1115,6 +1251,109 @@ cor.test(df$saliva_Average.1,df$BPS_Standard_after_forward-df$BPS_Standard_befor
 ggplot(df,aes(x=saliva_Average.1,y=BPS_block_4))+geom_point()+geom_smooth(method='lm',color='grey')+
   labs(x='saliva cortisol before experiment (nmol/l)',y='baseline pupil size (mm) after manipulation')
 
+
+```
+
+### EFA key measures
+
+- PCA suggests that 5 components explain 75% variance in the data
+- these components represent:
+  - PC1: BPS
+  - PC2: self-rated psychopathology
+  - PC3: SEPR visual oddball
+  - PC4: saliva cortisol + SEPR auditory oddball
+  - PC5: hair cortisol + saliva cortisol after + SEPR auditory oddball
+
+
+```{r PCA measures}
+
+interested_variables<-c(
+  "saliva_Average.1",
+  "saliva_Average.2",
+  "hair_cortisol_pg_mg",
+  #"BPS_block_1",
+  #"BPS_block_2",
+  "BPS_block_3",
+  "BPS_block_4",
+  #"BPS_block_5",
+  #"BPS_block_6",
+  #"BPS_Standard_before_forward",
+  #"BPS_Standard_before_reverse",
+  #"BPS_Standard_after_forward",
+  #"BPS_Standard_after_reverse",
+  "pd_low_oddball_saliencehigh_utilityhigh",
+  "pd_low_oddball_saliencehigh_utilitylow",
+  "pd_low_oddball_saliencelow_utilityhigh",
+  "pd_low_oddball_saliencelow_utilitylow",
+  "SEPR_Oddball_before_forward",
+  "SEPR_Oddball_before_reverse",
+  "SEPR_Oddball_after_forward",
+  "SEPR_Oddball_after_reverse",
+  "rpd_oddball_saliencehigh_utilityhigh",
+  "rpd_oddball_saliencehigh_utilitylow",
+  "rpd_oddball_saliencelow_utilityhigh",
+  "rpd_oddball_saliencelow_utilitylow",
+  "YSR_T_GES",
+  "YSR_T_INT",
+  "YSR_T_EXT",
+  "SDQ_total_self",
+  "SDQ_self_int",
+  "SDQ_self_ext"
+)
+
+# Subset data and remove rows with missing values
+pca_data <- df[, interested_variables]
+pca_data <- na.omit(pca_data)
+
+# Scale data (recommended for PCA)
+pca_data_scaled <- scale(pca_data)
+
+# Perform PCA
+pca_result <- prcomp(pca_data_scaled, center = TRUE, scale. = FALSE)
+
+# Scree plot: eigenvalues (variance) per component
+eigenvalues <- pca_result$sdev^2
+pct_var <- round(eigenvalues / sum(eigenvalues) * 100, 1)
+cum_var <- round(cumsum(pct_var), 1)
+
+scree_df <- data.frame(
+  Component = paste0("PC", 1:length(eigenvalues)),
+  Eigenvalue = eigenvalues,
+  Percent_Var = pct_var,
+  Cumulative_Var = cum_var
+)
+
+## scree plot indicates 5 components
+ggplot(scree_df, aes(x = Component, y = Eigenvalue, group = 1)) +
+  geom_point(size = 2) +
+  geom_line(colour = "steelblue") +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "red") +
+  labs(
+    title = "Scree Plot: Eigenvalues of Principal Components",
+    subtitle = "Dashed red line = Kaiser criterion (eigenvalue = 1)",
+    x = "Principal Component",
+    y = "Eigenvalue"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Component loadings: variables × components (rotated/unrotated)
+# Here: unrotated loadings (standard for PCA)
+loadings_matrix <- pca_result$rotation
+loadings_df <- as.data.frame(loadings_matrix)
+loadings_df$Variable <- rownames(loadings_df)
+
+# Show loadings for first 5 components (adjust as needed)
+kable(loadings_df[, c("Variable", paste0("PC", 1:5))], digits = 3, 
+      caption = "PCA Loadings (First 5 Components)",row.names=F) %>%
+  kable_styling(full_width = FALSE)
+
+# Optional: show variance explained table
+kable(
+  scree_df[, c("Component", "Eigenvalue", "Percent_Var", "Cumulative_Var")],
+  caption = "Variance Explained by Principal Components"
+) %>%
+  kable_styling(full_width = FALSE)
 
 ```
 
@@ -1142,7 +1381,7 @@ ggplot(df,aes(x=SDQ_total_self,y=saliva_change))+geom_point()+geom_smooth(color=
 #scale numeric variables
 df_scaled<-as.data.frame(lapply(df_sample, function(x) {if (is.numeric(x)) scale(x) else x}))
 
-###effects on psychopathology
+## effects on psychopathology
 lm<-lm(YSR_GES~gender+age+iq+autism_boolean,data=df_scaled)
 analyze_lm(lm,log_backtransform = F)
 save_model(lm, 
@@ -1156,7 +1395,6 @@ save_model(lm,
            var_names = c('Intercept','gender','age','IQ','autism diagnosis','Residuals'),
            caption_label = "Covariate Effects on self-reported psychopathology (SDQ-s).",
            figure_name = 'covariate_effects_on_selfreport_psychopathology_SDQs')
-
 
 lm<-lm(CBCL_GES~gender+age+iq+autism_boolean,data=df_scaled)
 analyze_lm(lm,log_backtransform = F)
@@ -1172,7 +1410,7 @@ save_model(lm,
            caption_label = "Covariate Effects on caregiver-reported psychopathology (SDQ-p).",
            figure_name = 'covariate_effects_on_caregiverreport_psychopathology_SDQp')
 
-##effects on pupillary response
+## effects on pupillary response
 lm<-lm(BPS_average~gender+age+iq+autism_boolean,data=df_scaled)
 analyze_lm(lm,log_backtransform = F)
 save_model(lm, 
@@ -1180,12 +1418,39 @@ save_model(lm,
            caption_label = "Covariate Effects on baseline pupil size (BPS).",
            figure_name = 'covariate_effects_on_BPS')
 
+
+  lm<-lm(BPS_block_1~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(BPS_block_3~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(BPS_block_5~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(BPS_block_6_saliencehigh_utilityhigh~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+
 lm<-lm(SEPR_average~gender+age+iq+autism_boolean,data=df_scaled)
 analyze_lm(lm,log_backtransform = F)
 save_model(lm, 
            var_names = c('Intercept','gender','age','IQ','autism diagnosis','Residuals'),
            caption_label = "Covariate Effects on stimulus-evoked pupillary response (SEPR).",
            figure_name = 'covariate_effects_on_SEPR')
+
+  lm<-lm(SEPR_Oddball_before_forward~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(SEPR_Oddball_after_forward~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(rpd_oddball_saliencelow_utilitylow~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
+  lm<-lm(rpd_oddball_saliencehigh_utilityhigh~gender+age+iq+autism_boolean,data=df_scaled)
+  analyze_lm(lm,log_backtransform = F)
+
 
 ##effects on bio samples
 lm<-lm(saliva_change_log~gender+age+iq+BMI+autism_boolean+saliva_CV.2+saliva_Time.1,data=df_scaled)
@@ -1207,9 +1472,9 @@ save_model(lm,
 
 ### bivariate association of pupillometry and cortisol concentration 
 
-investigating the magnitude and reactivity of pupillary measures
-
- - the average response to oddballs is predicted by higher BPS and basleine slide 1 (before experiment)
+ - the average response to oddballs is predicted by higher BPS and baseline slide 1 (before experiment)
+ - hair cortisol and saliva cortisol are not associated
+ - saliva cortisol levels before the experiment are associated with lower BPS before and after the manipulation
 
 ```{r pupillometry with bio samples}
 
@@ -1234,25 +1499,30 @@ save_model(lm,
            figure_name = 'Bivariate_assoication_BPS_SEPR')
 
 lm<-lm(hair_cortisol_pg_mg_log~saliva_change_log+
-         age+gender+autism_boolean+hair_mass_mg,data=df_scaled)
+         age+gender+autism_boolean+hair_mass_mg+saliva_Time.1,data=df_scaled)
 analyze_lm(lm)
 
 save_model(lm, 
-           var_names = c('Intercept','SCC change','age','gender','autism diagnosis','hair mass','Residuals'),
+           var_names = c('Intercept','SCC change','age','gender','autism diagnosis','hair mass','time of day','Residuals'),
            caption_label = "Bivariate association of saliva cortisol concentration (SCC) change and hair cortisol concentration (HCC).",
            figure_name = 'Bivariate_assoication_SCCchange_HCC')
 
 lm<-lm(hair_cortisol_pg_mg_log~saliva_Average.1_log+saliva_Average.2_log+
-         age+gender+hair_mass_mg+autism_boolean,data=df_scaled)
+         age+gender+hair_mass_mg+autism_boolean+saliva_Time.1,data=df_scaled)
+analyze_lm(lm)
+
+lm<-lm(BPS_block_3~hair_cortisol_pg_mg_log+saliva_Average.1_log+
+         age+gender+hair_mass_mg+autism_boolean+saliva_Time.1,data=df_scaled)
 analyze_lm(lm)
 
 lm<-lm(BPS_block_4~hair_cortisol_pg_mg_log+saliva_Average.1_log+
-         age+gender+hair_mass_mg+autism_boolean,data=df_scaled)
+         age+gender+hair_mass_mg+autism_boolean+saliva_Time.1,data=df_scaled)
 analyze_lm(lm)
 
-lm<-lm(SEPR_average~hair_cortisol_pg_mg_log+saliva_Average.1_log+
-         age+gender+hair_mass_mg+autism_boolean,data=df_scaled)
+lm<-lm(BPS_Oddball_after_forward~hair_cortisol_pg_mg_log+saliva_Average.1_log+
+         age+gender+hair_mass_mg+autism_boolean+saliva_Time.1,data=df_scaled)
 analyze_lm(lm)
+
 
 ```
 
@@ -1311,14 +1581,15 @@ ncol=2)
 # SCC change
 lm<-lm(saliva_change_log~YSR_T_GES+age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
-lm<-lm(saliva_change_log~SDQ_total_self+age+gender+autism_boolean,data=df_scaled)
+lm<-lm(saliva_change_log~SDQ_+age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 
 ```
 
 ### effect of psychopathology on pupillary measures
 
-- high self-reported externalizing is associated with attenuated SEPR
+- high self-reported externalizing in SDQ is associated with attenuated SEPR hgwn not controlling for all covariates
+- higher self-reported internalizing in YSR is associated with increased BPS after manipulation
 
 ```{r pupillometry_psychopathology}
 
@@ -1341,7 +1612,7 @@ save_model(lm,
            figure_name = 'SDQtotal_effects_on_SEPR')
 
 lm<-lm(SEPR_average~YSR_INT*YSR_EXT+
-         age+gender+autism_boolean,data=df_scaled)
+         autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
            var_names = c('Intercept','YSR INT','YSR EXT','age','gender',
@@ -1350,7 +1621,7 @@ save_model(lm,
            figure_name = 'YSRsubscales_effects_on_SEPR')
 
 lm<-lm(SEPR_average~SDQ_self_int*SDQ_self_ext+
-         age+gender+autism_boolean,data=df_scaled)
+    age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
            var_names = c('Intercept','SDQ-s INT','SDQ-s EXT','age','gender',
@@ -1358,8 +1629,13 @@ save_model(lm,
            caption_label = "Linear model - effect of self-reported psychopathology (SDQ-s Internalizing, SDQ-s Externalizing) on stimulus-evoked pupillary response (SEPR).",
            figure_name = 'SDQsubscales_effects_on_SEPR')
 
+    lm<-lm(rpd_oddball_saliencehigh_utilitylow~SDQ_self_int+SDQ_self_ext+
+    autism_boolean,data=df_scaled)
+    analyze_lm(lm)
 
-lm<-lm(BPS_average~YSR_GES+
+
+
+lm<-lm(BPS_block_4~YSR_GES+
          age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
@@ -1368,7 +1644,7 @@ save_model(lm,
            caption_label = "Linear model - effect of self-reported psychopathology (YSR Total) on baseline pupil size (BPS).",
            figure_name = 'YSRtotal_effects_on_BPS')
 
-lm<-lm(BPS_average~SDQ_total_self+
+lm<-lm(BPS_block_4~SDQ_total_self+
          age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
@@ -1377,7 +1653,7 @@ save_model(lm,
            caption_label = "Linear model - effect of self-reported psychopathology (SDQ-s Total) on baseline pupil size (BPS).",
            figure_name = 'SDQtotal_effects_on_BPS')
 
-lm<-lm(BPS_average~YSR_INT*YSR_EXT+
+lm<-lm(BPS_block_4~YSR_INT*YSR_EXT+
          age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
@@ -1386,7 +1662,7 @@ save_model(lm,
            caption_label = "Linear model - effect of self-reported psychopathology (YSR Internalizing, YSR Externalizing) on baseline pupil size (BPS).",
            figure_name = 'YSRsubscales_effects_on_BPS')
 
-lm<-lm(BPS_average~SDQ_self_int*SDQ_self_ext+
+lm<-lm(BPS_block_4~SDQ_self_int*SDQ_self_ext+
          age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 save_model(lm, 
@@ -1401,12 +1677,14 @@ save_model(lm,
 
 - lower hair cortisol associated with higher internalizing psychopathology
 - higher BPS is associated with higher internalizing
+- at above average saliva cortisol levels, lower SEPR is associated with higher internalizing
+
 - the interaction suggests that this might be specifically relevant in groups of elevated symptoms
 - pupillary measures might be a quantitative predictor of internalizing psychopathology in at-risk children
 
 ```{r measures on internalizing}
 
-lm<-lm(YSR_INT~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_change+
+lm<-lm(YSR_INT~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log+
          +age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 
@@ -1421,9 +1699,28 @@ save_model(lm,
            figure_name = 'combined_effects_on_YSRint')
 
 
-### R² = 0.17
-emtrends(lm, ~hair_cortisol_pg_mg+SEPR_average, var="BPS_average", 
-         at = list(hair_cortisol_pg_mg = c(-1,1),SEPR_average = c(-1,1)))
+lm<-lm(YSR_INT~BPS_average*SEPR_average*hair_cortisol_pg_mg+
+         +age+gender+autism_boolean,data=df_scaled)
+analyze_lm(lm)
+summary(lm)
+
+save_model(lm, 
+           var_names = c('Intercept','BPS','SEPR','HCC',
+                         'age','gender','autism diagnosis',
+                         'BPS x SEPR','BPS x HCC','SEPR x HCC',
+                         'BPS x SEPR x HCC','Residuals'),
+           caption_label = "Linear model - combined effects of pupillometry (BPS, SEPR) and cortisol concentration (HCC, SCC change) on self-reported Internalizing (YSR Internalizing).",
+           figure_name = 'combined_effects_on_YSRint')
+
+
+### R² = 0.23
+emtrends(lm, ~hair_cortisol_pg_mg+BPS_average, var="SEPR_average", 
+         at = list(hair_cortisol_pg_mg = c(-1,1),BPS_average = c(-1,1)))
+
+emtrends(lm, ~saliva_Average.1_log, var="SEPR_average", 
+         at = list(saliva_Average.1_log = c(-1,0,1)))
+
+
 
   #residual normality
   res_fe<-residuals(lm)
@@ -1431,13 +1728,13 @@ emtrends(lm, ~hair_cortisol_pg_mg+SEPR_average, var="BPS_average",
   qqnorm(res_fe)
   
   #moderation by Externalizing
-  lm<-lm(YSR_INT~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_change+YSR_EXT+
+  lm<-lm(YSR_INT~BPS_average*SEPR_average*hair_cortisol_pg_mg+YSR_EXT+
          +age+gender+autism_boolean,data=df_scaled)
   analyze_lm(lm)
 
 ## SDQ Internalizing
 ### R² = 0.23
-lm<-lm(SDQ_self_int~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_change+
+lm<-lm(SDQ_self_int~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log+
          +age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 
@@ -1452,7 +1749,19 @@ save_model(lm,
            figure_name = 'combined_effects_on_SDQint')
 
 
-emtrends(lm, ~hair_cortisol_pg_mg+SEPR_average, var="BPS_average", at = list(hair_cortisol_pg_mg = c(-1,0,1),SEPR_average = c(-1,0,1)))
+lm<-lm(SDQ_self_int~BPS_average*SEPR_average*hair_cortisol_pg_mg+
+         +age+gender+autism_boolean,data=df_scaled)
+analyze_lm(lm)
+
+save_model(lm, 
+           var_names = c('Intercept','BPS','SEPR','HCC',
+                         'age','gender','autism diagnosis',
+                         'BPS x SEPR','BPS x HCC','SEPR x HCC',
+                         'BPS x SEPR x HCC','Residuals'),
+           caption_label = "Linear model - combined effects of pupillometry (BPS, SEPR) and cortisol concentration (HCC, SCC change) on self-reported Internalizing (SDQ-s Internalizing).",
+           figure_name = 'combined_effects_on_SDQint')
+
+emtrends(lm, ~hair_cortisol_pg_mg+BPS_average, var="SEPR_average", at = list(hair_cortisol_pg_mg = c(-1,1),BPS_average = c(-1,1)))
 
 
   #moderation by Externalizing
@@ -1521,18 +1830,20 @@ dev.off()
 
 ### cortisol and pupillary measures explaining self-reported externalizing
 
-- specific to SDQ externalizing
-- higher hair cortisol also associated with attenuated self-reported externalizing
-- however --> mediated by pupillary responses interaction
-- at above average BPS levels - lower SEPR predict elevated externalizing
-- in parent reports - lower SEPR is associated with increased externalizing
+- in revised: only relevant in YSR compared to SDQ_s model (no effects for SDQ_s model)
+- higher saliva cortisol associated with lower externalizing psychopathology
+- this is differentiated by hair cortisol levels and SEPR
+- with high saliva cortisol and low hair cortisol, HIGHER SEPR is associated with higher externalizing psychopathology
+- with high saliva cortisol and high hair cortisol, LOWER SEPR is associated with higher externalizing psychopathology
+
 
 ```{r measures on externalizing}
 
 #YSR Ext
-lm<-lm(YSR_EXT~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_change+
+lm<-lm(YSR_EXT~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log+
          +age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
+summary(lm)
 
 save_model(lm, 
            var_names = c('Intercept','BPS','SEPR','HCC','SCC change',
@@ -1544,13 +1855,11 @@ save_model(lm,
            caption_label = "Linear model - combined effects of pupillometry (BPS, SEPR) and cortisol concentration (HCC, SCC change) on self-reported Externalizing (YSR).",
            figure_name = 'combined_effects_on_YSRext')
 
-
-
-### R² = 0.07
-emtrends(lm, ~SEPR_average+hair_cortisol_pg_mg, var="saliva_change", at = list(SEPR_average = c(-1,1),hair_cortisol_pg_mg = c(-1,1)))
+### R² = 0.17
+emtrends(lm, ~saliva_Average.1_log+hair_cortisol_pg_mg, var="SEPR_average", at = list(saliva_Average.1_log  = c(-1,1),hair_cortisol_pg_mg = c(-1,1)))
 
 #SDQ Ext
-lm<-lm(SDQ_self_ext~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_change+
+lm<-lm(SDQ_self_ext~BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log+
          +age+gender+autism_boolean,data=df_scaled)
 analyze_lm(lm)
 ### R² = 0.07
@@ -1565,18 +1874,17 @@ save_model(lm,
            caption_label = "Linear model - combined effects of pupillometry (BPS, SEPR) and cortisol concentration (HCC, SCC change) on self-reported Externalizing (SDQ-s).",
            figure_name = 'combined_effects_on_SDQext')
 
-# df_scaled$SEPR_average_split<-ifelse(df_scaled$SEPR_average>=0,'above average SEPR','below average SEPR')
-# df_scaled$HCC_average_split<-ifelse(df_scaled$hair_cortisol_pg_mg>=0,'above average HCC','below average HCC')
-# ggplot(df_scaled[!is.na(df_scaled$SEPR_average_split) & !is.na(df_scaled$HCC_average_split),],
-#        aes(x=saliva_change,y=YSR_EXT,color=HCC_average_split))+
-#   geom_point(size=2)+
-#   geom_smooth(method='lm',color='darkgrey')+
-#   facet_wrap(~SEPR_average_split+HCC_average_split)+
-#   xlab('saliva_change (HCC change, in z)')+
-#   ylab('SDQ Externalizing (z)')+
-#   theme(legend.position = 'none')
+emtrends(lm, ~BPS_average, var="SEPR_average", at = list(BPS_average = c(-2,-1,0,1,2)))
 
 
+df_scaled$SEPR_average_split<-ifelse(df_scaled$SEPR_average>=0,'above average SEPR','below average SEPR')
+df_scaled$BPS_average_split<-ifelse(df_scaled$BPS_average>=0,'above average BPS','below average BPS')
+ggplot(df_scaled[!is.na(df_scaled$SEPR_average_split) & !is.na(df_scaled$BPS_average_split),],
+       aes(x=SEPR_average,y=SDQ_self_ext,color=BPS_average_split))+
+  geom_point(size=2)+
+  geom_smooth(method='lm',color='darkgrey')+
+  facet_wrap(~BPS_average_split)+
+  theme(legend.position = 'none')
 
 # lm1<-lm(SDQ_self_ext~hair_cortisol_pg_mg+
 #          age+autism_boolean,data=df_scaled)
@@ -1607,11 +1915,10 @@ save_model(lm,
 ```{r classification, warnings=F}
 set.seed(333)
 
-split_ratio<-0.1
+split_ratio<-0.2
 
-
-df_sample$YSR_INT_CUTOFF<-ifelse(df_sample$YSR_T_INT>=70,T,F)
-df_sample$YSR_EXT_CUTOFF<-ifelse(df_sample$YSR_T_EXT>=70,T,F)
+df_sample$YSR_INT_CUTOFF<-ifelse(df_sample$YSR_T_INT>=65,T,F)
+df_sample$YSR_EXT_CUTOFF<-ifelse(df_sample$YSR_T_EXT>=65,T,F)
 
 # Ensure the target variable is a factor
 df_sample$YSR_INT_CUTOFF <- as.factor(df_sample$YSR_INT_CUTOFF)
@@ -1625,7 +1932,7 @@ table(df_sample$YSR_EXT_CUTOFF)
 df_sample_complete<-df_sample[complete.cases(df_sample$BPS_average) & 
                   complete.cases(df_sample$SEPR_average) & 
                   complete.cases(df_sample$hair_cortisol_pg_mg) & 
-                  complete.cases(df_sample$saliva_change) & complete.cases(df_sample$YSR_INT_CUTOFF),]
+                  complete.cases(df_sample$saliva_Average.1_log) & complete.cases(df_sample$YSR_INT_CUTOFF),]
 
 
 #bootstrapping function - cortisol
@@ -1634,7 +1941,7 @@ boot_auc <- function(data, indices) {
   testIndex <- createDataPartition(data$YSR_INT_CUTOFF, p = split_ratio, list = FALSE)
   trainData <- df_sample_complete[-trainIndex, ]
   testData <- df_sample_complete[-testIndex, ]
-  model <- glm(YSR_INT_CUTOFF ~ hair_cortisol_pg_mg*saliva_change, data = df_sample_complete, family = binomial)
+  model <- glm(YSR_INT_CUTOFF ~ hair_cortisol_pg_mg*saliva_Average.1_log, data = df_sample_complete, family = binomial)
   probs <- predict(model, newdata = testData, type = "response")
   roc_obj <- roc(testData$YSR_INT_CUTOFF, probs)
   return(auc(roc_obj))
@@ -1662,7 +1969,6 @@ boot_auc <- function(data, indices) {
   return(auc(roc_obj))
 }
 
-
 # Combine training data and testData for bootstrapping
 # (You can also bootstrap on testData if preferred)
 suppressMessages({boot_results <- boot(data = df_sample_complete, statistic = boot_auc, R = 1000)
@@ -1688,7 +1994,7 @@ boot_auc <- function(data, indices) {
   testIndex <- createDataPartition(data$YSR_INT_CUTOFF, p = split_ratio, list = FALSE)
   trainData <- df_sample_complete[-trainIndex, ]
   testData <- df_sample_complete[-testIndex, ]
-  model <- glm(YSR_INT_CUTOFF ~ BPS_average*SEPR_average*hair_cortisol_pg_mg, data = df_sample_complete, family = binomial)
+  model <- glm(YSR_INT_CUTOFF ~ BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log, data = df_sample_complete, family = binomial)
   probs <- predict(model, newdata = testData, type = "response")
   roc_obj <- roc(testData$YSR_INT_CUTOFF, probs)
   return(auc(roc_obj))
@@ -1705,15 +2011,17 @@ print(paste("pupillometry + hair cortisol AUC:", round(mean(boot_results$t,na.rm
 print(ci)
 
 
+####FOR EXTERNALIZING
+
 # Bootstrapping function to compute AUC
 boot_auc <- function(data, indices) {
-  trainIndex <- createDataPartition(data$YSR_INT_CUTOFF, p = split_ratio, list = FALSE)
-  testIndex <- createDataPartition(data$YSR_INT_CUTOFF, p = split_ratio, list = FALSE)
+  trainIndex <- createDataPartition(data$YSR_EXT_CUTOFF, p = split_ratio, list = FALSE)
+  testIndex <- createDataPartition(data$YSR_EXT_CUTOFF, p = split_ratio, list = FALSE)
   trainData <- df_sample_complete[-trainIndex, ]
   testData <- df_sample_complete[-testIndex, ]
-   model <- glm(YSR_INT_CUTOFF ~ BPS_average*SEPR_average*hair_cortisol_pg_mg, data = df_sample_complete, family = binomial)
+   model <- glm(YSR_EXT_CUTOFF ~ BPS_average*SEPR_average*hair_cortisol_pg_mg*saliva_Average.1_log, data = df_sample_complete, family = binomial)
   probs <- predict(model, newdata = testData, type = "response")
-  roc_obj <- roc(testData$YSR_INT_CUTOFF, probs)
+  roc_obj <- roc(testData$YSR_EXT_CUTOFF, probs)
   return(auc(roc_obj))
 }
 
@@ -1729,75 +2037,4 @@ print(ci)
 
 
 ```
-
-
-### trial-based analysis
-```{r trial_based_analysis}
-
-ggplot(df_trial_visualoddball,aes(x=trial_number,y=pd_low,group=id))+geom_smooth(method='lm')
-
-require(lme4)
-require(lmerTest)
-
-#estimate slope of BPS change within visual oddball task
-lmm<-lmer(pd_low~trial_number*id+(1|id),df_trial_visualoddball)
-anova(lmm)
-
-#extract data
-df_BPSslope<-data.frame(emtrends(lmm,~id,var='trial_number'))
-df_BPSslope<-df_BPSslope[,1:3]
-names(df_BPSslope)<-c('id','BPS_slope','BPS_slope_SD')
-hist(scale(df_BPSslope$BPS_slope))
-summary(scale(df_BPSslope$BPS_slope))
-
-#merge with df
-df$merger_id<-as.numeric(substr(df$SEGA_ID,6,8))
-df<-merge(df,df_BPSslope,by.x='merger_id',by.y='id',all.x=T)
-
-
-lm<-lm(scale(BPS_slope)~YSR_T_INT*YSR_T_EXT+
-         age+autism_boolean,data=df)
-summary(lm)
-
-
-```
-
-### classification based on condition data
-
-```{r condition_classification}
-
-names(df_sample)
-
-df_class<-df_sample[,57:88]
-
-#impute missings with rowwise mean
-df_class_imputed <- df_class
-for (j in seq_along(df_class_imputed)) {
-  na_idx <- is.na(df_class_imputed[[j]])
-  if (any(na_idx)) {
-    df_class_imputed[na_idx, j] <- median(df_class_imputed[[j]], na.rm = TRUE)
-  }
-}
-
-# Euclidean distance
-d <- dist(df_class_imputed, method = "euclidean")
-
-# Hierarchical clustering with Ward's method (recommended for many numeric datasets)
-hc <- hclust(d, method = "ward.D2")
-
-# Base dendrogram
-plot(hc, cex = 0.6, hang = -1, main = "Hierarchical Clustering Dendrogram (Ward.D2)")
-
-#assumed clusters based on dendrogram
-clusters <- cutree(hc, k = 3)
-
-# Append cluster labels to your original (complete) data
-result <- data.frame(df_sample, cluster = factor(clusters))
-
-with(result,by(YSR_T_INT,cluster,psych::describe))
-with(result,by(YSR_T_EXT,cluster,psych::describe))
-with(result,by(YSR_T_GES,cluster,psych::describe))
-
-```
-
 
